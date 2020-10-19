@@ -41,7 +41,7 @@ func summarize(res []response) []string{
         sum += res[i].time
         minSize = min(minSize, int64(res[i].size))
         maxSize = max(maxSize, int64(res[i].size))
-        if strings.HasPrefix(res[i].code, "4"){
+        if strings.HasPrefix(res[i].code, "4") || strings.HasPrefix(res[i].code, "5"){
             fail += 1
             errCode[res[i].code] += 1
         }
@@ -89,7 +89,7 @@ func report(res []response){
         items[i].value = summ[i]
     }
 
-    fmt.Printf("\n********** Benchmark Result **********\n")
+    fmt.Printf("********** Benchmark Result **********\n")
     var leftLen, rightLen int64 = 0, 0
     for i:=0;i<9;i++{
         leftLen = max(leftLen, int64(len(items[i].name)))
