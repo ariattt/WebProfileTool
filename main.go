@@ -235,7 +235,7 @@ func main() {
                                                 "  - due to inevitable network system call cache\n" + 
                                                 "* Multi go-routine benchmark\n" +
                                                 "  - requests issued in batch of GOMAXPROCS\n" + 
-                                                "  - first batch slower due to caching\n",
+                                                "  - first batch slower due to caching",
                                             )
     flag.Parse()
 
