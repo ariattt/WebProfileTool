@@ -47,12 +47,12 @@ Usage of ./WebProfileTool:
 The elapsed time measures the sum of establishing connection, sending http request, copying response to a local byte array and closing connection. 
 A new connection is made for every request.
 
-### Status Code
-Status code 4xx and 5xx and number of occurence will be listed in Error Code Met section. Others including 1xx, 2xx, 3xx will be considered successful.
-
 ### Concurrency
 The solution does now utilize go-routines. Each request is issued in a go routine. Go routines will be created in groups of GOMAXPROCS and it issues next group only if all go routines in the current group are finished.  
 If all (e.g. 100) routines are issued at once, the go runtime will be drown and measured time will include a signicant portion of go routine wait time. Here's a specifix example to illustrate. *Routine A* sends request and the scheduler puts *Routine A* into sleep and runs other routines. The server could have responded to *Routine A* long before the scheduler yields control back to *Routine A*, making the measured time longer than the real time. 
+
+### Status Code
+Status code 4xx and 5xx and number of occurence will be listed in Error Code Met section. Others including 1xx, 2xx, 3xx will be considered successful.
 
 ### Request Headers
 Here's the default http request header used. Feel free to change it if you need to. This is just from my Safari.
