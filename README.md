@@ -10,25 +10,39 @@ A executeable named ```WebProfileTool``` should be generated under root
 
 ## To Run
 ``` 
-$ ./WebProfileTool -url www.google.com/robots.txt -profile 10
-```
-Absent ```-profile``` flag will output server response to console.
-```-h``` will display help.
-The result will be displayed similar to this.
-```
+$ ./WebProfileTool -url www.google.com/robots.txt -profile 100 -thread
 ********** Benchmark Result **********
 ------------------------------------
-| Number of Requests   | 10        |
-| Fastest Time         | 1029 ms   |
-| Slowest Time         | 1079 ms   |
-| Mean Time            | 1036 ms   |
-| Median Time          | 1033 ms   |
+| Number of Requests   | 100       |
+| Fastest Time         | 106 ms    |
+| Slowest Time         | 305 ms    |
+| Mean Time            | 133 ms    |
+| Median Time          | 121 ms    |
 | Precentage Succeeded | 100.00%   |
 | Error Code Met       |           |
-| Response Min Size    | 2204 byte |
-| Response Max Size    | 2204 byte |
+| Response Min Size    | 7645 byte |
+| Response Max Size    | 7645 byte |
 ------------------------------------
 ```
+Absent ```-profile``` flag will output server response to console. 
+Help can be displayed with ```-h```
+```
+$ ./WebProfileTool -h
+Usage of ./WebProfileTool:
+  -profile int
+    	Please specify the number of requests (default 1)
+  -thread
+    	Please indicate whether single or multi go-routine benchmark
+    	* Single go-routine benchmark
+    	  - first request slower than the followings
+    	  - due to inevitable network system call cache
+    	* Multi go-routine benchmark
+    	  - requests issued in batch of GOMAXPROCS
+    	  - first batch slower due to caching
+  -url string
+    	Please specify the endpoint to be profiled
+```
+
 ## Design Decisions
 The elapsed time measures the sum of establishing connection, sending http request, copying response to a local byte array and closing connection. 
 A new connection is made for every request.
