@@ -9,6 +9,8 @@ import (
     "sort"
     "strings"
     "time"
+	"crypto/tls"
+    "io/ioutil"
 )
 
 type response struct{
@@ -28,11 +30,11 @@ func max(a int64, b int64) int64 { if a>b {return a} else {return b}}
 // return minTime, maxTime, meanTime, MedianTime....
 func summarize(res []response) []string{
     if len(res) == 0 { return make([]string, 10)}
+    fmt.Printf("%v\n", res)
 
     sort.Slice(res, func(a,b int) bool{
         return res[a].time < res[b].time
     })
-
     var maxInt int64 = 9223372036854775807
     var sum,minSize,maxSize int64 = 0,maxInt, 0
     errCode := make(map[string]int)
@@ -118,43 +120,75 @@ func report(res []response){
  
 }
 
-func retrieve(host string, path string, buf *bytes.Buffer) bool{
-    conn, err := net.Dial("tcp", host + ":80")
+func retrieve(host string, path string, buf *bytes.Buffer, finished chan bool) bool{
+    timeout, _ := time.ParseDuration("5s")
+	d := net.Dialer{
+		Timeout: timeout,
+	}
+    conn, err := tls.DialWithDialer(&d, "tcp", host + ":https", nil)
     if err != nil{
         fmt.Printf("conn error: %s\n", err)
         return false
     }
     defer conn.Close()
 
-    fmt.Fprintf(conn, "GET "+path+" HTTP/1.1\r\n" + 
+    fmt.Fprintf(conn, "GET "+path+" HTTP/1.0\r\n" + 
                         "HOST: "+host+"\r\n" +
-                        "Cache-Control: no-cache\r\n" + 
-                        "Pragma: no-cache\r\n" +
-                        "Accept-Language: en-us\r\n" +
-                        "Connection: keep-alive\r\n" + 
-                        "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8\r\n" +
-                        "Accept-Encoding: gzip,deflate,br\r\n" + 
-                        "User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.0 Safari/605.1.15\r\n" + 
-                        "\r\n\r\n")
-
-    if conn.SetReadDeadline(time.Now().Add(1 * time.Second)) != nil {
-        fmt.Printf("set deadline failed\n")
-        return false
-    }
+                        // "Cache-Control: no-cache\r\n" + 
+                        // "Pragma: no-cache\r\n" +
+                        // "Accept-Language: en-us\r\n" +
+                        // "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8\r\n" +
+                        // "Accept-Encoding: gzip,deflate,br\r\n" + 
+                        "\r\n")
 
     io.Copy(buf, conn)
+    // data, _ := ioutil.ReadAll(conn)
+    // if err != nil {
+    //     fmt.Printf("readAll failed %v\n", err)
+    //     return false
+    // }
+    // fmt.Printf("%s", string(data))
+    finished<-true
     return true
+}
+
+func sendRequest(host,path string) []byte {
+	timeout, _ := time.ParseDuration("10s")
+	d := net.Dialer{
+		Timeout: timeout,
+	}
+	tlsConn, _ := tls.DialWithDialer(&d, "tcp", host + ":https", nil)
+	defer tlsConn.Close()
+
+	tlsConn.Write([]byte("GET "+path+" HTTP/1.0\r\n" + 
+                        "HOST: "+host+"\r\n" +
+                        // "Cache-Control: no-cache\r\n" + 
+                        // "Pragma: no-cache\r\n" +
+                        // "Accept-Language: en-us\r\n" +
+                        // // "Connection: keep-alive\r\n" + 
+                        // "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8\r\n" +
+                        // "Accept-Encoding: gzip,deflate,br\r\n" + 
+                        "\r\n"))
+	// tlsConn.Write([]byte("Host: " + host + "\r\n"))
+	// tlsConn.Write([]byte("\r\n"))
+
+    data, _ := ioutil.ReadAll(tlsConn)
+	return data
 }
 
 func benchmark(host string, path string, n_req int){
 
     res := make([]response, n_req)
     for i:=0;i<n_req;i++{
-        var buf bytes.Buffer
         code := "400"
+        var buf bytes.Buffer
+        finished := make(chan bool)
         start := time.Now()
-        success := retrieve(host, path, &buf)
+        go retrieve(host, path, &buf, finished)
+        <-finished
+        // _ = sendRequest(host, path)
         elapsed := time.Now().Sub(start)
+        success := true
         if success{
             str := buf.String()
             if ind := strings.Index(str, "\n"); ind != -1{
@@ -172,8 +206,9 @@ func benchmark(host string, path string, n_req int){
         res[i].code = code
         res[i].size = buf.Len()
         if n_req == 1{
-            fmt.Printf("%s\n", buf)
+            fmt.Printf("%s\n", buf.String())
         }
+        time.Sleep(100 * time.Millisecond)
     }
     report(res)
 }
