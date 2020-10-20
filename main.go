@@ -147,7 +147,7 @@ func retrieve(host string, path string, buf *bytes.Buffer, finished chan bool) b
     //     fmt.Printf("readAll failed %v\n", err)
     //     return false
     // }
-    // fmt.Printf("%s", string(data))
+    fmt.Printf("%s", buf.String())
     finished<-true
     return true
 }
@@ -173,6 +173,8 @@ func sendRequest(host,path string) []byte {
 	// tlsConn.Write([]byte("\r\n"))
 
     data, _ := ioutil.ReadAll(tlsConn)
+    index := strings.Index(string(data), "\r\n\r\n") + 4
+    fmt.Printf("%s\nshit\n", string(data)[index:])
 	return data
 }
 
@@ -206,9 +208,9 @@ func benchmark(host string, path string, n_req int){
         res[i].code = code
         res[i].size = buf.Len()
         if n_req == 1{
-            fmt.Printf("%s\n", buf.String())
+            // fmt.Printf("%s\n", buf.String())
         }
-        time.Sleep(100 * time.Millisecond)
+        // time.Sleep(100 * time.Millisecond)
     }
     report(res)
 }
