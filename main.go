@@ -10,7 +10,8 @@ import (
     "strings"
     "time"
 	"crypto/tls"
-    "io/ioutil"
+    "sync"
+    "runtime"
 )
 
 type response struct{
@@ -24,13 +25,21 @@ type item struct{
     value string
 }
 
+type options struct{
+    n_req int
+    url string
+    thread bool
+}
+
+var opts options
+
 func min(a int64, b int64) int64 { if a<b {return a} else {return b}}
 func max(a int64, b int64) int64 { if a>b {return a} else {return b}}
 
 // return minTime, maxTime, meanTime, MedianTime....
 func summarize(res []response) []string{
     if len(res) == 0 { return make([]string, 10)}
-    fmt.Printf("%v\n", res)
+    // fmt.Printf("%v\n", res)
 
     sort.Slice(res, func(a,b int) bool{
         return res[a].time < res[b].time
@@ -120,7 +129,7 @@ func report(res []response){
  
 }
 
-func retrieve(host string, path string, buf *bytes.Buffer, finished chan bool) bool{
+func retrieve(host string, path string, buf *bytes.Buffer, success *bool){
     timeout, _ := time.ParseDuration("5s")
 	d := net.Dialer{
 		Timeout: timeout,
@@ -128,95 +137,82 @@ func retrieve(host string, path string, buf *bytes.Buffer, finished chan bool) b
     conn, err := tls.DialWithDialer(&d, "tcp", host + ":https", nil)
     if err != nil{
         fmt.Printf("conn error: %s\n", err)
-        return false
+        buf = nil
+        return
     }
     defer conn.Close()
 
     fmt.Fprintf(conn, "GET "+path+" HTTP/1.0\r\n" + 
                         "HOST: "+host+"\r\n" +
-                        // "Cache-Control: no-cache\r\n" + 
-                        // "Pragma: no-cache\r\n" +
+                        "Cache-Control: no-cache\r\n" + 
+                        "Pragma: no-cache\r\n" +
                         // "Accept-Language: en-us\r\n" +
                         // "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8\r\n" +
                         // "Accept-Encoding: gzip,deflate,br\r\n" + 
                         "\r\n")
 
-    io.Copy(buf, conn)
-    // data, _ := ioutil.ReadAll(conn)
-    // if err != nil {
-    //     fmt.Printf("readAll failed %v\n", err)
-    //     return false
-    // }
-    fmt.Printf("%s", buf.String())
-    finished<-true
-    return true
-}
-
-func sendRequest(host,path string) []byte {
-	timeout, _ := time.ParseDuration("10s")
-	d := net.Dialer{
-		Timeout: timeout,
-	}
-	tlsConn, _ := tls.DialWithDialer(&d, "tcp", host + ":https", nil)
-	defer tlsConn.Close()
-
-	tlsConn.Write([]byte("GET "+path+" HTTP/1.0\r\n" + 
-                        "HOST: "+host+"\r\n" +
-                        // "Cache-Control: no-cache\r\n" + 
-                        // "Pragma: no-cache\r\n" +
-                        // "Accept-Language: en-us\r\n" +
-                        // // "Connection: keep-alive\r\n" + 
-                        // "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8\r\n" +
-                        // "Accept-Encoding: gzip,deflate,br\r\n" + 
-                        "\r\n"))
-	// tlsConn.Write([]byte("Host: " + host + "\r\n"))
-	// tlsConn.Write([]byte("\r\n"))
-
-    data, _ := ioutil.ReadAll(tlsConn)
-    index := strings.Index(string(data), "\r\n\r\n") + 4
-    fmt.Printf("%s\nshit\n", string(data)[index:])
-	return data
-}
-
-func benchmark(host string, path string, n_req int){
-
-    res := make([]response, n_req)
-    for i:=0;i<n_req;i++{
-        code := "400"
-        var buf bytes.Buffer
-        finished := make(chan bool)
-        start := time.Now()
-        go retrieve(host, path, &buf, finished)
-        <-finished
-        // _ = sendRequest(host, path)
-        elapsed := time.Now().Sub(start)
-        success := true
-        if success{
-            str := buf.String()
-            if ind := strings.Index(str, "\n"); ind != -1{
-                str = str[:ind]
-            }
-            spts := strings.Split(str, " ")
-            if len(spts) > 1{
-                code = strings.Split(str, " ")[1]
-            }else{
-                code = "unknown"
-                fmt.Printf(code)
-            }
-        }
-        res[i].time = elapsed.Milliseconds()
-        res[i].code = code
-        res[i].size = buf.Len()
-        if n_req == 1{
-            // fmt.Printf("%s\n", buf.String())
-        }
-        // time.Sleep(100 * time.Millisecond)
+    _, err = io.Copy(buf, conn)
+    if err != nil {
+        fmt.Printf("read failed %v\n", err)
+        buf = nil
+        return
     }
+    *success = true
+}
+
+func retrieve_wrapper(host, path string, res *response, wg *sync.WaitGroup){
+    defer wg.Done()
+    success := false
+    var buf bytes.Buffer
+    start := time.Now()
+    retrieve(host, path, &buf, &success)
+    elapsed := time.Now().Sub(start)
+
+    code := "400"
+    if success{
+        str := buf.String()
+        if ind := strings.Index(str, "\n"); ind != -1{
+            str = str[:ind]
+        }
+        spts := strings.Split(str, " ")
+        if len(spts) > 1{
+            code = strings.Split(str, " ")[1]
+        }else{
+            code = "unknown"
+            fmt.Printf(code)
+        }
+    }
+    res.time = elapsed.Milliseconds()
+    res.code = code
+    res.size = buf.Len()
+    if opts.n_req == 1{
+        fmt.Printf("%s\n", buf.String())
+    }
+}
+
+func benchmark(host string, path string){
+
+    res := make([]response, opts.n_req)
+    var wg sync.WaitGroup
+    maxprocs := 1
+    if opts.thread{
+        maxprocs = runtime.GOMAXPROCS(-1)
+    }
+    // fmt.Printf("%d\n", maxprocs)
+    for i:=0;i<opts.n_req;i++{
+        wg.Add(1)
+        go retrieve_wrapper(host, path, &res[i], &wg)
+        if i % maxprocs == maxprocs-1 {
+            wg.Wait()
+        }
+    }
+    wg.Wait()
     report(res)
 }
 
 // prase url and return host and path
-func parse_url(url string) (string, string){
+func parse_url() (string, string){
+    url := opts.url
     if ind := strings.Index(url, "://"); ind != -1{
         url = url[ind+3:]
     }
@@ -231,15 +227,19 @@ func parse_url(url string) (string, string){
 }
 
 func main() {
-
-    var url string
-    var n_req int
-
-    flag.StringVar(&url, "url", "", "Please specify the endpoint to be profiled")
-    flag.IntVar(&n_req, "profile", 1, "Please specify the number of requests")
+    flag.StringVar(&opts.url, "url", "", "Please specify the endpoint to be profiled")
+    flag.IntVar(&opts.n_req, "profile", 1, "Please specify the number of requests")
+    flag.BoolVar(&opts.thread, "thread", false, "Please indicate whether single or multi go-routine benchmark\n" + 
+                                                "* Single go-routine benchmark\n" +
+                                                "  - first request slower than the followings\n" + 
+                                                "  - due to inevitable network system call cache\n" + 
+                                                "* Multi go-routine benchmark\n" +
+                                                "  - requests issued in batch of GOMAXPROCS\n" + 
+                                                "  - first batch slower due to caching\n",
+                                            )
     flag.Parse()
 
-    host, path := parse_url(url)
+    host, path := parse_url()
 
-    benchmark(host, path, n_req)
+    benchmark(host, path)
 }
