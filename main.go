@@ -28,7 +28,8 @@ type item struct{
 type options struct{
     n_req int
     url string
-    thread bool
+    n_thread int
+    dist bool
 }
 
 var opts options
@@ -39,8 +40,15 @@ func max(a int64, b int64) int64 { if a>b {return a} else {return b}}
 // return minTime, maxTime, meanTime, MedianTime....
 func summarize(res []response) []string{
     if len(res) == 0 { return make([]string, 10)}
-    // fmt.Printf("%v\n", res)
 
+    if opts.dist{
+        fmt.Printf("Request times: ")
+        for _, resp := range res{
+            fmt.Printf("%d ", resp.time)
+        }
+        fmt.Printf("\n")
+    }
+    
     sort.Slice(res, func(a,b int) bool{
         return res[a].time < res[b].time
     })
@@ -194,8 +202,8 @@ func benchmark(host string, path string){
 
     res := make([]response, opts.n_req)
     var wg sync.WaitGroup
-    maxprocs := 1
-    if opts.thread{
+    maxprocs := opts.n_thread
+    if maxprocs <= 0 {
         maxprocs = runtime.GOMAXPROCS(-1)
     }
     // fmt.Printf("%d\n", maxprocs)
@@ -229,14 +237,18 @@ func parse_url() (string, string){
 func main() {
     flag.StringVar(&opts.url, "url", "", "Please specify the endpoint to be profiled")
     flag.IntVar(&opts.n_req, "profile", 1, "Please specify the number of requests")
-    flag.BoolVar(&opts.thread, "thread", false, "Please indicate whether single or multi go-routine benchmark\n" + 
+    flag.IntVar(&opts.n_thread, "thread", -1, "Please specify the number of concurrent go-routine.\n" + 
+                                                " -thread n, requests will be issued in groups of n.\n" +
+                                                "    If n is invalid or absent, GOMAXPROCS will be used\n" + 
+                                                "\n" +
                                                 "* Single go-routine benchmark\n" +
                                                 "  - first request slower than the followings\n" + 
-                                                "  - due to inevitable network system call cache\n" + 
+                                                "  - inevitable network system call cache\n" + 
                                                 "* Multi go-routine benchmark\n" +
                                                 "  - requests issued in batch of GOMAXPROCS\n" + 
                                                 "  - first batch slower due to caching",
                                             )
+    flag.BoolVar(&opts.dist, "dist", false, "Print request time chronologically if flag set.")
     flag.Parse()
 
     host, path := parse_url()
