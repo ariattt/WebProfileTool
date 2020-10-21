@@ -1,7 +1,7 @@
 # WebProfileTool
 
 A multi-threaded website profiling tool written in Go. Requests will be issued in batch.  
-Highlights
+Highlights:
 * batch execution
 * batch size dependent on underlying system
 * TLS connection
